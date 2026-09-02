@@ -1,0 +1,19 @@
+# Dependências (Evita subir milhares de arquivos pesados)
+node_modules/
+
+# Variáveis de Ambiente e Chaves (SEGURANÇA MÁXIMA)
+.env
+.env.*
+!.env.example
+
+# Arquivos de Build/Compilação do TypeScript
+dist/
+build/
+
+# Logs de erro do Node
+npm-debug.log*
+yarn-error.log*
+
+# Lixo de Sistema Operacional
+.DS_Store
+Thumbs.db
