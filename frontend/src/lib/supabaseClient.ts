@@ -1,13 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-declare const process: {
-	env: {
-		NEXT_PUBLIC_SUPABASE_URL?: string
-		NEXT_PUBLIC_SUPABASE_ANON_KEY?: string
-	}
-}
-
+// Lendo as variáveis de ambiente com segurança
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// O createBrowserClient garante que a sessão seja salva nos Cookies para o Middleware ler
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)

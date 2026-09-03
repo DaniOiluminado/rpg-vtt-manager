@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { useRouter } from 'next/navigation'; 
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const router = useRouter();
 
   // Função para Login com Email e Senha
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -49,7 +51,12 @@ export default function LoginPage() {
       }
     });
 
-    if (error) setMessage(error.message);
+    if (error) {
+      setMessage(error.message);
+      } else {
+        router.push('/painel'); // <-- ALTERE AQUI PARA REDIRECIONAR
+        router.refresh();
+        }
   };
 
   return (
