@@ -44,10 +44,27 @@ export default function CampaignGrid() {
       if (user) {
         setUserId(user.id);
         
-        // Busca as campanhas ordenadas pelas mais recentes (Limita a 5)
+        // 1. Verifica em quais mesas o usuário atual tem uma cadeira (como mestre ou jogador)
+        const { data: memberships } = await supabase
+          .from('campaign_members')
+          .select('campaign_id')
+          .eq('user_id', user.id);
+
+        // Se ele não participar de nenhuma, para por aqui e mostra o grid vazio
+        if (!memberships || memberships.length === 0) {
+          setCampaigns([]);
+          setLoading(false);
+          return;
+        }
+
+        // Extrai apenas a lista de IDs das campanhas
+        const campaignIds = memberships.map(m => m.campaign_id);
+
+        // 2. Busca os detalhes EXCLUSIVAMENTE das mesas daquele usuário
         const { data } = await supabase
           .from('campaigns')
           .select(`*, campaign_members(user_id)`)
+          .in('id', campaignIds)
           .order('created_at', { ascending: false })
           .limit(5);
 

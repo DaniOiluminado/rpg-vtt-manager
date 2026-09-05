@@ -3,26 +3,30 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
+import imageCompression from 'browser-image-compression';
 
 export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: boolean, onClose: () => void, userId: string }) {
   const router = useRouter();
   const [step, setStep] = useState<'selecao' | 'jogador' | 'mestre'>('selecao');
   
-  // Estados para Jogador
   const [inviteCode, setInviteCode] = useState('');
   
-  // Estados para Mestre
+  // Estados do Mestre
   const [title, setTitle] = useState('');
   const [system, setSystem] = useState('D&D 5e');
-  const [coverUrl, setCoverUrl] = useState('');
   const [nextSession, setNextSession] = useState('');
   const [description, setDescription] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   
+  // Novos estados para Imagem
+  const [imageMode, setImageMode] = useState<'url' | 'upload'>('upload');
+  const [coverUrl, setCoverUrl] = useState('');
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Gera um código de 8 dígitos assim que o usuário escolhe ser Mestre
   useEffect(() => {
     if (step === 'mestre' && !generatedCode) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -32,12 +36,24 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
     }
   }, [step]);
 
+  // Limpa o preview quando o modal fecha
+  useEffect(() => {
+    if (!isOpen && previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [isOpen, previewUrl]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setCoverFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
   const handleJoinCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    // 1. Busca a mesa pelo código
     const { data: campaign, error: fetchError } = await supabase
       .from('campaigns')
       .select('id')
@@ -50,7 +66,6 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
       return;
     }
 
-    // 2. Insere o jogador na mesa
     const { error: joinError } = await supabase
       .from('campaign_members')
       .insert([{ campaign_id: campaign.id, user_id: userId, role: 'jogador' }]);
@@ -68,13 +83,44 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
     setLoading(true);
     setError('');
 
-    // 1. Cria a campanha
+    let finalCoverUrl = coverUrl;
+
+    // Processo de Compressão e Upload
+    if (imageMode === 'upload' && coverFile) {
+      try {
+        const options = {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1280, // Resolução ideal para painéis de RPG
+          useWebWorker: true,
+        };
+        
+        const compressedFile = await imageCompression(coverFile, options);
+        const fileName = `${userId}-${Date.now()}.jpg`;
+
+        const { error: uploadError, data: uploadData } = await supabase.storage
+          .from('campaign_covers')
+          .upload(fileName, compressedFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from('campaign_covers')
+          .getPublicUrl(fileName);
+
+        finalCoverUrl = publicUrlData.publicUrl;
+      } catch (err: any) {
+        setError('Erro ao processar imagem: ' + err.message);
+        setLoading(false);
+        return;
+      }
+    }
+
     const { data: newCampaign, error: createError } = await supabase
       .from('campaigns')
       .insert([{ 
         title, 
         system, 
-        cover_image: coverUrl, 
+        cover_image: finalCoverUrl, 
         next_session: nextSession || null, 
         description, 
         invite_code: generatedCode,
@@ -89,7 +135,6 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
       return;
     }
 
-    // 2. Coloca o criador como Mestre na tabela de membros
     await supabase
       .from('campaign_members')
       .insert([{ campaign_id: newCampaign.id, user_id: userId, role: 'mestre' }]);
@@ -102,11 +147,7 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-lg overflow-hidden rounded-xl bg-codice-parchment p-6 shadow-2xl">
-        
-        {/* Botão Fechar */}
-        <button onClick={onClose} className="absolute right-4 top-4 text-codice-dark/50 hover:text-codice-red">
-          ✕
-        </button>
+        <button onClick={onClose} className="absolute right-4 top-4 text-codice-dark/50 hover:text-codice-red">✕</button>
 
         {error && <div className="mb-4 rounded bg-codice-red/10 p-3 text-sm text-codice-red">{error}</div>}
 
@@ -135,7 +176,7 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
               placeholder="Ex: X9A2B4C1"
-              className="mb-6 w-full rounded-md border border-codice-dark/20 bg-white p-3 text-center text-2xl font-bold text-codice-dark outline-none focus:border-codice-green"
+              className="mb-6 w-full rounded-md border border-codice-dark/20 bg-white p-3 text-center text-2xl font-bold tracking-widest text-codice-dark outline-none focus:border-codice-green uppercase"
               required
             />
             <button type="submit" disabled={loading || inviteCode.length < 8} className="w-full rounded-md bg-codice-green py-3 font-bold text-codice-parchment disabled:opacity-50 hover:bg-codice-dark">
@@ -147,12 +188,28 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
         {step === 'mestre' && (
           <form onSubmit={handleCreateCampaign} className="max-h-[75vh] overflow-y-auto pr-2">
             <button type="button" onClick={() => setStep('selecao')} className="mb-4 text-sm font-bold text-codice-green hover:underline">← Voltar</button>
-            <h2 className="mb-6 text-xl font-bold text-codice-dark">Criar Campanha</h2>
+            <h2 className="mb-4 text-xl font-bold text-codice-dark">Forjar Campanha</h2>
             
             <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-bold text-codice-dark">Imagem de Capa (URL)</label>
-                <input type="url" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="https://..." className="w-full rounded-md border border-codice-dark/20 p-2 outline-none focus:border-codice-green" />
+              
+              {/* Seção de Capa com Abas */}
+              <div className="rounded-md border border-codice-dark/20 p-3 bg-white/50">
+                <div className="mb-3 flex justify-between items-center border-b border-codice-dark/10 pb-2">
+                  <label className="text-sm font-bold text-codice-dark">Imagem de Capa</label>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setImageMode('upload')} className={`text-xs font-bold px-2 py-1 rounded ${imageMode === 'upload' ? 'bg-codice-green text-white' : 'text-codice-dark/60 hover:bg-codice-dark/5'}`}>Upload</button>
+                    <button type="button" onClick={() => setImageMode('url')} className={`text-xs font-bold px-2 py-1 rounded ${imageMode === 'url' ? 'bg-codice-green text-white' : 'text-codice-dark/60 hover:bg-codice-dark/5'}`}>Link URL</button>
+                  </div>
+                </div>
+
+                {imageMode === 'upload' ? (
+                  <div>
+                    <input type="file" accept="image/*" onChange={handleFileChange} className="w-full text-sm text-codice-dark file:mr-4 file:rounded-md file:border-0 file:bg-codice-green file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-codice-dark" />
+                    {previewUrl && <img src={previewUrl} alt="Preview" className="mt-3 h-32 w-full rounded object-cover shadow-sm" />}
+                  </div>
+                ) : (
+                  <input type="url" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} placeholder="https://..." className="w-full rounded-md border border-codice-dark/20 p-2 text-sm outline-none focus:border-codice-green" />
+                )}
               </div>
               
               <div>
@@ -162,7 +219,7 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-bold text-codice-dark">Sistema</label>
+                  <label className="mb-1 block text-sm font-bold text-codice-dark">Sistema Base</label>
                   <select value={system} onChange={(e) => setSystem(e.target.value)} className="w-full rounded-md border border-codice-dark/20 p-2 outline-none focus:border-codice-green">
                     <option>D&D 5e</option>
                     <option>Pathfinder 2e</option>
@@ -173,18 +230,18 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-bold text-codice-dark">Próxima Sessão</label>
+                  <label className="mb-1 block text-sm font-bold text-codice-dark">Frequência / Sessão</label>
                   <input type="datetime-local" value={nextSession} onChange={(e) => setNextSession(e.target.value)} className="w-full rounded-md border border-codice-dark/20 p-2 text-sm outline-none focus:border-codice-green" />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold text-codice-dark">Premissa / Sinopse</label>
+                <label className="mb-1 block text-sm font-bold text-codice-dark">Premissa</label>
                 <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full resize-none rounded-md border border-codice-dark/20 p-2 outline-none focus:border-codice-green" required />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold text-codice-dark">Código de Convite (Compartilhe com jogadores)</label>
+                <label className="mb-1 block text-sm font-bold text-codice-dark">Código de Convite</label>
                 <div className="flex overflow-hidden rounded-md border border-codice-dark/20 bg-white">
                   <input type="text" value={generatedCode} readOnly className="w-full p-2 font-mono font-bold text-codice-green outline-none" />
                   <button type="button" onClick={() => navigator.clipboard.writeText(generatedCode)} className="bg-codice-dark/10 px-4 font-bold text-codice-dark hover:bg-codice-dark/20 transition">
@@ -194,7 +251,7 @@ export default function NewCampaignModal({ isOpen, onClose, userId }: { isOpen: 
               </div>
 
               <button type="submit" disabled={loading} className="mt-4 w-full rounded-md bg-codice-dark py-3 font-bold text-codice-parchment transition hover:bg-codice-green disabled:opacity-50">
-                {loading ? 'Forjando...' : 'Salvar Campanha'}
+                {loading ? 'Preparando os Manuscritos...' : 'Criar Mesa'}
               </button>
             </div>
           </form>
