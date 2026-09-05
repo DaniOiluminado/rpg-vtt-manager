@@ -25,9 +25,8 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // REGRA 1: Usuários NÃO logados não podem acessar rotas protegidas (ex: /painel, /campanha)
-  // Nota: Adicionaremos a proteção das campanhas aqui no futuro
-  if (!user && request.nextUrl.pathname.startsWith('/painel')) {
+  // REGRA 1: Protege /painel e /campanha
+  if (!user && (request.nextUrl.pathname.startsWith('/painel') || request.nextUrl.pathname.startsWith('/campanha'))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
