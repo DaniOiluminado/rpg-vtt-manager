@@ -14,7 +14,8 @@
     "browser-image-compression": "^2.0.2",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-easy-crop": "^6.2.3"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
